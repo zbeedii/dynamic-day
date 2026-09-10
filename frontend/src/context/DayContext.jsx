@@ -39,7 +39,7 @@ export function DayProvider({ children }) {
   }, [refresh]);
 
   useEffect(() => {
-    const id = setInterval(refresh, 20000);
+    const id = setInterval(refresh, 5000);
     return () => clearInterval(id);
   }, [refresh]);
 
