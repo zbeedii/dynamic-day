@@ -1,0 +1,9 @@
+name = "dynamic-day-push-scheduler"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+# Set these as secrets with: wrangler secret put BACKEND_URL / PUSH_CRON_SECRET

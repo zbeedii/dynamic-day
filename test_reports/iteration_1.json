@@ -1,0 +1,29 @@
+{
+  "summary": "First-run testing of Dynamic Day app. Wrote pytest suite (19 tests) covering auth (login/me via Bearer+Cookie/logout/lockout-avoidance), templates (seeded University Day, create/rename/blocks/split, buffer & share-100% & fixed-fit validation), day engine (materialise, allocation maths, shrinking allocations, late_start pending decision, must-today carry via settle_past_blocks, undo restore, block split & buffer patch rejection, complete + finish-day flows, settings PUT round-trip, reward at 100% chance). All 19 backend tests pass. Frontend smoke via Playwright: login -> Quick view, navigation to Planning tab, Templates tab shows seeded 'University Day', create/delete template, settings popover opens with threshold value, /focus Execution shell loads, logout returns to login. All happy-path UI flows functional.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Execution / focus (idle)", "issues": ["When there is no active task/block the page shows only a subtle '…' (loader glyph) for a moment then the execution-idle card. If polling is slow the loader can persist — consider a short hard timeout or immediate idle fallback if data.exists is known false to avoid a blank screen."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Engine tkey policy: materialize_day sets tkey=t['id'] (unique per template task) so `pull_forward` and `remaining_future_min` never find cross-block matches from a plain template assignment — early completion of a recurring task never actually 'pulls remaining future minutes forward' unless the same task instance was cloned via block split. If the product intent is 'same recurring task can span multiple blocks', tkey should be derived from a stable per-template-task key, or the same recurring task must be added to multiple blocks and share a tkey. Confirm with product.",
+    "Reward re-affirmation: `maybe_reward` picks reward BEFORE any spent check; it fires on every completion (independent of undo/freed). That's fine but note `reward_chance_pct` at 100 gives 100% because `random.random()*100 >= 100` is False (random.random() < 1.0). Correct implementation, worth a comment.",
+    "server.py is 821 lines — approaching the 700-line split threshold; would benefit from splitting auth/templates/day/settings routers into separate modules.",
+    "In `assign_day`, `now_min` is a required query param but doc-only validation — consider defaulting from server time when omitted to avoid client 422s.",
+    "`push_undo` stores full day snapshots and relies on Mongo TTL (3600s). Fine for single-user, but note `_id` is stripped only on undo GET (`day.pop('_id', None)`) — good; keep the pop in place.",
+    "CORS uses `allow_origin_regex='.*'` with `allow_credentials=True`. Some browsers reject wildcard+credentials — the preview URL currently works, but this is technically non-compliant. Consider echoing the request Origin explicitly."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% (smoke)"},
+  "test_credentials": "admin@dynamicday.app / Sanctuary#2026 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Tests create+delete their own transient TEST_ templates; university-day template is seeded on backend startup so no manual seeding required. Today's day (2026-09-07) may still contain 'Test – live block' plus a University Day assignment from a previous manual smoke test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "backend_test.py uses -n 0 friendly design but by default pytest.ini forces -n 2 --dist loadscope which caused a settings-race between TestSettings and TestReward. The reward test now defensively re-PUTs reward_chance_pct=100 before each completion. If you add more tests that mutate /api/settings, either isolate them in a single class or restore defaults after use to avoid races. Note: engine.pull_forward only works when tkey is shared across blocks (see critical code review).",
+  "rca of the issue": "N/A — no functional bugs found."
+}

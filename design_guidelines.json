@@ -1,0 +1,167 @@
+{
+  "project_title": "ChronoFlow - Dynamic Time Management System",
+  "app_type": "personal_productivity_web_app",
+  "design_persona": "E1 - The Anti-AI Designer",
+  "design_archetype": "Organic & Tactical Sanctuary (Warm Slate + Soft Sage + Amber Spark)",
+  "theme_strategy": {
+    "default_mode": "dark",
+    "execution_mode_theme": "ultra_calm_zen_monochrome",
+    "planning_mode_theme": "lively_tactile_warmth",
+    "now_view_theme": "focused_metric_clarity"
+  },
+  "typography": {
+    "heading_font": "Outfit, sans-serif",
+    "body_font": "Plus Jakarta Sans, sans-serif",
+    "mono_font": "JetBrains Mono, monospace",
+    "font_imports": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-extrabold tracking-tight leading-tight",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3": "text-xl sm:text-2xl font-semibold tracking-normal",
+      "h4": "text-lg font-medium tracking-normal",
+      "body": "text-base leading-relaxed text-slate-300",
+      "small_label": "text-xs font-semibold uppercase tracking-widest text-slate-400",
+      "mono_timer": "font-mono tracking-tight font-bold text-3xl sm:text-5xl"
+    }
+  },
+  "colors": {
+    "background": {
+      "main": "#0D0F12",
+      "surface": "#15181E",
+      "surface_elevated": "#1E222A",
+      "border": "#2A2E39",
+      "glass": "rgba(21, 24, 30, 0.75)"
+    },
+    "brand_palette": {
+      "sage_primary": "#86A789",
+      "sage_hover": "#9DBB9F",
+      "sage_muted": "rgba(134, 167, 137, 0.15)",
+      "amber_accent": "#E0A96D",
+      "terracotta_alert": "#D97757",
+      "sky_info": "#60A5FA",
+      "obsidian_card": "#161A22"
+    },
+    "text": {
+      "primary": "#F1F5F9",
+      "secondary": "#94A3B8",
+      "muted": "#64748B",
+      "accent": "#86A789"
+    },
+    "task_type_colors": {
+      "recurring_percentage": "#86A789",
+      "one_off_checkmark": "#60A5FA",
+      "fixed_time": "#E0A96D"
+    }
+  },
+  "visual_enhancers": {
+    "textures": {
+      "noise_overlay": "bg-[radial-gradient(#2A2E39_1px,transparent_1px)] [background-size:16px_16px] opacity-40",
+      "glow_sage": "shadow-[0_0_25px_rgba(134,167,137,0.2)]",
+      "glow_amber": "shadow-[0_0_25px_rgba(224,169,109,0.25)]"
+    },
+    "borders": "border border-[#2A2E39] rounded-xl",
+    "glassmorphism": "backdrop-blur-xl bg-[#15181E]/80 border border-white/10"
+  },
+  "layouts_and_spaces": {
+    "navigation": {
+      "type": "Header with Workspace Switcher + Google Login User Menu",
+      "spaces": [
+        {
+          "id": "advance_planning",
+          "label": "Advance Planning",
+          "description": "Weekly day templates assigned to weekdays, block creation, splits, buffers, and % task allocation."
+        },
+        {
+          "id": "now_next_view",
+          "label": "Now & Next View",
+          "description": "Quick view showing ONLY the active block or upcoming block, never the full day, with live calculated minutes."
+        },
+        {
+          "id": "execution_mode",
+          "label": "Focus Execution Mode",
+          "description": "Full-screen distraction-free sanctuary displaying single active task, ring timer, sub-checklist, and calm visuals."
+        }
+      ]
+    },
+    "spacing_rules": {
+      "container_padding": "p-4 sm:p-6 md:p-8",
+      "gap_grid": "gap-6 md:gap-8",
+      "section_spacing": "space-y-8"
+    }
+  },
+  "key_features_design_guidelines": {
+    "template_editor": {
+      "grid": "grid-cols-1 lg:grid-cols-12 gap-6",
+      "block_card": "bg-[#15181E] border border-[#2A2E39] rounded-2xl p-6 transition-all hover:border-slate-600",
+      "features": [
+        "Time blocks splittable into two sub-blocks with mandatory transition buffer slider",
+        "3 task types with visual badges (% recurring share, 1-off checkmark, fixed-time slot)",
+        "Protected minimum duration toggle with alert state if block time is exhausted",
+        "Must-complete-today quota checkbox with visual impact preview on later blocks",
+        "Free-text task notes modal/popover drawer with Markdown/bullet support"
+      ]
+    },
+    "now_next_view": {
+      "rule": "CRITICAL: NEVER show the whole day here. Focus strictly on current block + immediate next block.",
+      "layout": "max-w-3xl mx-auto space-y-6",
+      "elements": [
+        "Live block progress indicator with real-time dynamic minute recalculation badge",
+        "Adaptive task queue displaying calculated exact duration in real-time",
+        "Quick start focus trigger button leading into Execution Mode"
+      ]
+    },
+    "execution_mode": {
+      "vibe": "Ultra-calm, zero clutter, dark slate backdrop with soft breathing ambient lighting",
+      "elements": [
+        "Large high-contrast ring timer with JetBrains Mono live countdown",
+        "Current active task title in bold Outfit font",
+        "Instant sub-checklist with check-off micro-animations",
+        "Conscious delay logger (+5 min / +10 min) with threshold warning prompt",
+        "Immediate Exit / Finish Task buttons"
+      ]
+    },
+    "decision_prompts": {
+      "modal_style": "High-priority alert dialog with glassmorphism backdrop overlay (bg-black/80 backdrop-blur-md)",
+      "triggers": [
+        "Delay exceeds configured threshold (e.g., >15 mins off schedule)",
+        "Minimum protected task duration cannot fit into remaining block time"
+      ],
+      "choices": [
+        "Trim lower-priority % tasks",
+        "Push task to next block",
+        "Extend block & absorb delay"
+      ]
+    },
+    "undo_toast": {
+      "style": "Floating bottom bar with active 5-second countdown progress ring and Instant Undo button",
+      "use_case": "Sensitive automatic dynamic time redistributions, task completions pulling time forward"
+    },
+    "random_visual_rewards": {
+      "mechanism": "Random probability (~35%) on checking sub-tasks or completing tasks",
+      "visual": "Elegant subtle canvas confetti or golden aura burst overlay rather than garish loud popups"
+    }
+  },
+  "image_urls": {
+    "nature_calm_bg": "https://images.unsplash.com/photo-1767370866573-eaeccbb31cfa?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwyfHxtaW5pbWFsaXN0JTIwY2FsbSUyMG5hdHVyZSUyMGZvY3VzJTIwdGV4dHVyZSUyMGFic3RyYWN0fGVufDB8fHx8MTc4ODc1ODY2Mnww&ixlib=rb-4.1.0&q=85",
+    "zen_leaves_bg": "https://images.unsplash.com/photo-1775058782322-484d0dc9ee34?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHw0fHxtaW5pbWFsaXN0JTIwY2FsbSUyMG5hdHVyZSUyMGZvY3VzJTIwdGV4dHVyZSUyMGFic3RyYWN0fGVufDB8fHx8MTc4ODc1ODY2Mnww&ixlib=rb-4.1.0&q=85",
+    "minimal_branch": "https://images.unsplash.com/photo-1781478410624-82087132a528?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwY2FsbSUyMG5hdHVyZSUyMGZvY3VzJTIwdGV4dHVyZSUyMGFic3RyYWN0fGVufDB8fHx8MTc4ODc1ODY2Mnww&ixlib=rb-4.1.0&q=85"
+  },
+  "instructions_to_main_agent": [
+    "Load Google Fonts 'Outfit', 'Plus Jakarta Sans', and 'JetBrains Mono' in index.html or top level CSS.",
+    "Implement the 3 distinct spaces (Advance Planning, Now/Next Block View, Focus Execution Mode) with clean top tab bar navigation.",
+    "CRITICAL: Ensure ALL interactive elements, buttons, inputs, modals, tabs, and status cards have explicit 'data-testid' attributes.",
+    "Use Lucide-React icons for crisp UI representations (Calendar, Clock, Split, Shield, CheckCircle2, Zap, AlertTriangle, RotateCcw, Lock, FileText).",
+    "Use Sonner for notifications and implement the custom floating 5-second Undo bar for automatic time redistribution.",
+    "Maintain state persistence in localStorage / API for day templates, current tasks, notes, settings, and delay logs.",
+    "Make Execution Mode feel genuinely serene: dark monochrome canvas, warm sage ring countdown timer, sub-task list, and optional calm nature background toggle.",
+    "Include Google Login landing state / mock auth user switcher for personal single-user account flow."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Never use generic white backgrounds or default unstyled components.",
+    "Every container with a border MUST have internal padding (p-6 or p-8) to prevent text collision.",
+    "Avoid Inter for headings; use Outfit or uppercase tracking-widest style for micro-labels.",
+    "Do not use transparent dropdown or popover backgrounds - always use solid/glass surface with backdrop-blur-md and clear border.",
+    "Ensure high text contrast for WCAG readability across dark slate backgrounds.",
+    "Always test grid layout responsiveness on mobile (grid-cols-1) up to desktop (grid-cols-12)."
+  ]
+}

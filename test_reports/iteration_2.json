@@ -1,0 +1,34 @@
+{
+  "summary": "Second-round testing of Dynamic Day covering the three newly-added features (week planning, task moving, day closing) plus regression. Extended the existing pytest file with 9 new tests (28 total, all pass). Frontend UI verified via Playwright: week strip renders 7 day cells, weekday/all fill work with skip messaging in toast, day cells switch date, task move popover opens and moves tasks between blocks, day wrap-up card appears for a past date with deduped leftovers, Move-to-tomorrow (defer) shows a success toast naming the target block/date and removes the row, Drop-it removes the row, wrapup-dismiss hides the card. Regression suite (auth/templates/day-engine/settings/reward) still green.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Planning → This day (week strip)", "issues": ["The week-strip surface renders its title row before /api/week resolves, leaving a visibly empty 'no cells' area for a few hundred ms after page load. A tiny 7-cell skeleton would smooth the initial paint. Not a functional bug."]},
+      {"screen": "Quick view (Day wrap-up)", "issues": ["Wrap-up card header colour (--amber) on the deep bg has good contrast, but the eyebrow text 'THE DAY IS OVER' and the metric row share the same colour — a slightly muted secondary line would help visual hierarchy. Cosmetic."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 984 lines — well past the 700-line split threshold. Recommend splitting auth/templates/day/week/undo/settings routers into separate modules under /app/backend/routers/ before it grows further.",
+    "move_task_between: when the destination block already contains the SAME task title as a recurring task (e.g. via inject_carries), the moved recurring task will produce two entries with the same tkey in one block. compute_day treats them independently — allocations will sum correctly, but the UI may show a duplicate row for a moment. Consider merging shares (or refusing the move) when a task with matching tkey already lives in the destination block.",
+    "defer_task assumes today's template also works as tomorrow's template. If the user deferred to a much later date the same starter is materialised regardless of the actual desired day — acceptable for a single-user app, but the message could hint 'created a fresh day from today's plan on <date>' so users aren't surprised.",
+    "The /api/week response uses to_list(20) although at most 7 documents are ever needed for a 7-day range — safe but misleading; use to_list(7) or length=None.",
+    "date-cell button in WeekStrip has no aria-pressed / no accessible label for the state ('selected'), and the toggle relies purely on inline background style. Adding aria-current='date' or a visually-visible ring would improve accessibility.",
+    "leftover-defer default target is hard-coded to date+1 with no picker. The API supports any to_date; a small day picker would enable 'move to Monday' rather than only tomorrow.",
+    "CORS still uses allow_origin_regex='.*' with allow_credentials=True — flagged last round, still open."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (28/28)", "frontend": "100% of new-feature happy paths + regression smoke"},
+  "test_credentials": "admin@dynamicday.app / Sanctuary#2026",
+  "seed_data_creation": "Tests created and cleaned up their own days (2027-01-04..10 for week planning, 2027-02-08 for task move, 2020-03-15/16 for day closing). All test-generated days deleted at end of run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "backend_test.py now has 4 test classes for the new features (TestWeekPlanning, TestTaskMove, TestDayClosing plus existing regression). Each cleans its own dates on setup+teardown. Frontend note: DayContext keeps `date` in memory only — a full page reload (page.goto) resets it to todayStr(); use client-side nav (click on 'Now' / 'Plan' links) if you need the date state to survive between test steps. To trigger a React-controlled <input type='date'> change in Playwright, use the native value setter + input event (see the wrap-up script) — plain page.fill() may not fire onChange for controlled date inputs on all Chromium builds.",
+  "rca of the issue": "N/A — no functional bugs found in this round."
+}
