@@ -170,12 +170,13 @@ class TestDayEngine:
         morning = next(b for b in data["blocks"] if b["name"].startswith("Morning"))
         # pool: 240 min - 90 fixed = 150
         assert morning["pool_min"] == 150
-        # recurring 40% + 30% = 70% => alloc 60 + 45 = 105
+        # The 09:00-10:30 fixed lecture is a hard boundary, so at 08:30
+        # only the 30-minute 08:30-09:00 window can be allocated dynamically.
+        assert morning["dynamic_available_min"] == 30
         alloc_by_title = {t["title"]: t["allocated_min"] for t in morning["tasks"] if t["type"] == "recurring"}
-        assert abs(alloc_by_title["Lecture notes review"] - 60) < 0.5
-        assert abs(alloc_by_title["Reading list"] - 45) < 0.5
-        # free_min should be 30% of pool = 45
-        assert abs(morning["free_min"] - 45) < 1
+        assert abs(alloc_by_title["Lecture notes review"] - 17.1) < 0.6
+        assert abs(alloc_by_title["Reading list"] - 12.9) < 0.6
+        assert abs(morning["free_min"]) < 0.6
 
     def test_allocations_shrink(self, uni_template_id):
         tid, s = uni_template_id
@@ -192,8 +193,9 @@ class TestDayEngine:
     def test_late_start_decision(self, uni_template_id):
         tid, s = uni_template_id
         s.post(f"{API}/day/{TODAY}/assign?now_min=480", json={"template_id": tid})
-        # morning 08:30-12:30 (240min); threshold=30% =>72min; ask at 08:30+80=09:50=590
-        r = s.get(f"{API}/day/{TODAY}?now_min=590")
+        # Use the afternoon block (no fixed task): 14:00-17:00, threshold=30%=54m.
+        # At 16:20 the untouched block is 140m late, so conscious friction must appear.
+        r = s.get(f"{API}/day/{TODAY}?now_min=980")
         data = r.json()
         pending = data["pending_decisions"]
         kinds = [p["kind"] for p in pending]
@@ -598,6 +600,33 @@ class TestBugRegressions:
         assert len(reinjected) >= len(pre_carries), (
             "after undo, settle_past_blocks should be able to re-run and re-inject the carry"
         )
+
+    def test_fixed_tasks_cannot_overlap(self):
+        s = _login()
+        r = s.post(f"{API}/templates", json={"name": "TEST_FixedOverlap"})
+        tid = r.json()["id"]
+        try:
+            r1 = s.post(f"{API}/templates/{tid}/blocks", json={"name": "B", "start": "08:00", "end": "12:00"})
+            bid = r1.json()["blocks"][0]["id"]
+            r2 = s.post(f"{API}/templates/{tid}/blocks/{bid}/tasks", json={
+                "title": "F1", "type": "fixed", "fixed_start": "09:00", "fixed_duration_min": 60})
+            assert r2.status_code == 200
+            r3 = s.post(f"{API}/templates/{tid}/blocks/{bid}/tasks", json={
+                "title": "F2", "type": "fixed", "fixed_start": "09:30", "fixed_duration_min": 30})
+            assert r3.status_code == 400
+            assert "overlap" in r3.json()["detail"].lower()
+        finally:
+            s.delete(f"{API}/templates/{tid}")
+
+    def test_fixed_task_cannot_start_outside_slot(self):
+        s = _login()
+        tid = _uni_id(s)
+        s.post(f"{API}/day/{self.DATE}/assign?now_min=-1", json={"template_id": tid})
+        d = s.get(f"{API}/day/{self.DATE}?now_min=-1").json()
+        morning = next(b for b in d["blocks"] if b["name"].startswith("Morning"))
+        fixed = next(t for t in morning["tasks"] if t["type"] == "fixed")
+        r = s.post(f"{API}/day/{self.DATE}/tasks/{fixed['id']}/start?now_min=510")
+        assert r.status_code == 409
 
     # ---- Bug #2: patch endpoints validate share_pct / fixed / min_minutes ----
     def test_patch_task_share_pct_over_100_rejected(self):
