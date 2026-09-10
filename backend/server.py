@@ -112,6 +112,31 @@ def validate_blocks(blocks: List[dict], buffer_min: int):
             raise HTTPException(400, f"'{a['name']}' and '{b['name']}' need at least a {buffer_min}-minute transition buffer")
 
 
+def validate_fixed_tasks(block: dict):
+    """Fixed tasks are hard reservations and may never overlap each other."""
+    start, end = E.t2m(block["start"]), E.t2m(block["end"])
+    intervals = []
+    for t in block.get("tasks", []):
+        if t.get("type") != "fixed":
+            continue
+        if not t.get("fixed_start") or t.get("fixed_duration_min", 0) <= 0:
+            raise HTTPException(400, f"Fixed task '{t.get('title', 'Untitled')}' needs a start time and a positive duration")
+        fs = E.t2m(t["fixed_start"])
+        fe = fs + int(t["fixed_duration_min"])
+        if fs < start or fe > end:
+            raise HTTPException(400, f"Fixed task '{t['title']}' must fit inside block '{block['name']}'")
+        intervals.append((fs, fe, t["title"]))
+    intervals.sort()
+    for previous, current in zip(intervals, intervals[1:]):
+        if current[0] < previous[1]:
+            raise HTTPException(400, f"Fixed tasks '{previous[2]}' and '{current[2]}' overlap")
+
+
+def validate_all_tasks(blocks: List[dict]):
+    for block in blocks:
+        validate_fixed_tasks(block)
+
+
 def normalize_buffers(blocks: List[dict], buffer_min: int):
     ordered = sorted(blocks, key=lambda b: E.t2m(b["start"]))
     for i, b in enumerate(ordered):
@@ -300,6 +325,7 @@ async def get_template(user_id: str, tid: str) -> dict:
 async def save_template(tpl: dict):
     settings = await get_settings(tpl["user_id"])
     validate_blocks(tpl["blocks"], settings["buffer_min"])
+    validate_all_tasks(tpl["blocks"])
     normalize_buffers(tpl["blocks"], settings["buffer_min"])
     tpl["blocks"] = sorted(tpl["blocks"], key=lambda b: E.t2m(b["start"]))
     await db.templates.update_one({"user_id": tpl["user_id"], "id": tpl["id"]}, {"$set": {"blocks": tpl["blocks"], "name": tpl["name"]}})
@@ -395,6 +421,13 @@ def validate_task(body: TaskIn, block: dict):
         fs = E.t2m(body.fixed_start)
         if fs < E.t2m(block["start"]) or fs + body.fixed_duration_min > E.t2m(block["end"]):
             raise HTTPException(400, "A fixed task must fit inside its block")
+        for other in block.get("tasks", []):
+            if other.get("type") != "fixed" or not other.get("fixed_start"):
+                continue
+            ofs = E.t2m(other["fixed_start"])
+            oef = ofs + int(other.get("fixed_duration_min", 0))
+            if fs < oef and ofs < fs + body.fixed_duration_min:
+                raise HTTPException(400, f"Fixed task '{body.title}' overlaps '{other['title']}'")
 
 
 def validate_task_patch(patch: dict, task: dict, block: dict):
@@ -420,6 +453,13 @@ def validate_task_patch(patch: dict, task: dict, block: dict):
             fs = E.t2m(fs_new)
             if fs < E.t2m(block["start"]) or fs + dmin_new > E.t2m(block["end"]):
                 raise HTTPException(400, "A fixed task must fit inside its block")
+            for other in block.get("tasks", []):
+                if other["id"] == task["id"] or other.get("type") != "fixed" or not other.get("fixed_start"):
+                    continue
+                ofs = E.t2m(other["fixed_start"])
+                oef = ofs + int(other.get("fixed_duration_min", 0))
+                if fs < oef and ofs < fs + dmin_new:
+                    raise HTTPException(400, f"Fixed task '{task['title']}' overlaps '{other['title']}'")
 
     if "min_minutes" in patch:
         mm = patch["min_minutes"]
@@ -521,6 +561,7 @@ async def clear_day(date: str, user: dict = Depends(current_user)):
 
 async def save_day_validated(day: dict, settings: dict):
     validate_blocks(day["blocks"], settings["buffer_min"])
+    validate_all_tasks(day["blocks"])
     normalize_buffers(day["blocks"], settings["buffer_min"])
     day["blocks"] = sorted(day["blocks"], key=lambda b: E.t2m(b["start"]))
     await save_day(day)
@@ -623,6 +664,13 @@ async def start_task(date: str, taskid: str, now_min: int, user: dict = Depends(
         for t in b["tasks"]:
             E.pause_task(t, now_dt)
     _, task = find_task(day, taskid)
+    if task.get("type") == "fixed":
+        if not task.get("fixed_start"):
+            raise HTTPException(400, "A fixed task has no scheduled start time")
+        fs = E.t2m(task["fixed_start"])
+        fe = fs + int(task.get("fixed_duration_min", 0))
+        if not (fs <= now_min < fe):
+            raise HTTPException(409, "Fixed tasks can only be started during their scheduled time")
     task["active_since"] = now_dt.isoformat()
     task["overrun_acknowledged"] = False
     await save_day(day)
@@ -882,6 +930,7 @@ def move_task_between(container: dict, task_id: str, to_block_id: str) -> str:
 async def move_template_task(tid: str, taskid: str, body: MoveIn, user: dict = Depends(current_user)):
     tpl = await get_template(user["_id"], tid)
     move_task_between(tpl, taskid, body.to_block_id)
+    validate_all_tasks(tpl["blocks"])
     return await save_template(tpl)
 
 
@@ -891,6 +940,7 @@ async def move_day_task(date: str, taskid: str, body: MoveIn, now_min: int, user
     settings = await get_settings(user["_id"])
     before = copy.deepcopy(day)
     label = move_task_between(day, taskid, body.to_block_id)
+    validate_all_tasks(day["blocks"])
     await save_day(day)
     undo = {"id": await push_undo(before, label), "label": label} if label else None
     return await computed_response(day, now_min, settings, undo=undo)
@@ -1120,7 +1170,8 @@ async def push_dispatch_due(request: Request):
                 for candidate in subs:
                     try:
                         webpush(subscription_info={"endpoint": candidate["endpoint"], "keys": candidate["keys"]}, data=__import__('json').dumps(payload), vapid_private_key=os.environ["VAPID_PRIVATE_KEY"], vapid_claims={"sub": os.environ["VAPID_CLAIMS_EMAIL"]}, ttl=300)
-                        sent += 1; delivered = True
+                        sent += 1
+                        delivered = True
                     except Exception:
                         await db.push_subscriptions.delete_one({"_id": candidate["_id"]})
                 if delivered:
