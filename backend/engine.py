@@ -100,6 +100,51 @@ def new_day_task(t, tkey=None):
     }
 
 
+def fixed_intervals(block):
+    """Return validated fixed-task intervals inside the block, sorted by start."""
+    start, end = t2m(block["start"]), t2m(block["end"])
+    intervals = []
+    for t in block.get("tasks", []):
+        if t.get("type") != "fixed" or t.get("done") or not t.get("fixed_start"):
+            continue
+        fs = t2m(t["fixed_start"])
+        fe = fs + max(0, int(t.get("fixed_duration_min", 0)))
+        if fe <= start or fs >= end:
+            continue
+        intervals.append((max(start, fs), min(end, fe), t))
+    return sorted(intervals, key=lambda x: (x[0], x[1], x[2]["id"]))
+
+
+def dynamic_capacity(block, now_min):
+    """Return the dynamic minutes available *now* without crossing a fixed slot.
+
+    For an active block, only the current contiguous dynamic window is usable. This is
+    the key invariant that prevents a running dynamic task from crossing a fixed task.
+    For an upcoming block, the full dynamic capacity is reported for preview purposes.
+    """
+    start, end = t2m(block["start"]), t2m(block["end"])
+    if now_min < start:
+        return block_pool(block)
+    if now_min >= end:
+        return 0.0
+
+    cursor = max(start, now_min)
+    intervals = fixed_intervals(block)
+
+    # A missed fixed task remains a hard reservation until it is explicitly completed.
+    # This prevents the scheduler from silently continuing with dynamic work after a
+    # non-postponable appointment was missed.
+    if any(fe <= cursor for _fs, fe, _task in intervals):
+        return 0.0
+    for fs, fe, _task in intervals:
+        if fs <= cursor < fe:
+            return 0.0
+        if cursor < fs:
+            return float(max(0, fs - cursor))
+
+    return float(max(0, end - cursor))
+
+
 def compute_block(block, now_min, now_dt, settings, all_blocks):
     start, end = t2m(block["start"]), t2m(block["end"])
     if now_min < start:
@@ -108,18 +153,30 @@ def compute_block(block, now_min, now_dt, settings, all_blocks):
         status = "past"
     else:
         status = "active"
+
     remaining = max(0, end - max(now_min, start))
     pool = block_pool(block)
     tasks = block["tasks"]
     threshold = max(1.0, (end - start) * settings.get("delay_threshold_pct", 30) / 100.0)
 
-    fixed_remaining = 0
-    for t in tasks:
-        if t["type"] == "fixed" and not t.get("done") and t.get("fixed_start"):
-            fs = t2m(t["fixed_start"])
-            fe = fs + t.get("fixed_duration_min", 0)
-            fixed_remaining += max(0, min(fe, end) - max(fs, max(now_min, start)))
-    A = max(0.0, remaining - fixed_remaining)
+    intervals = fixed_intervals(block)
+    due_fixed = None
+    blocked_by_fixed = None
+    if status == "active":
+        for fs, fe, t in intervals:
+            if fs <= now_min < fe:
+                due_fixed = t["id"]
+                blocked_by_fixed = t
+                break
+            if now_min >= fe and not t.get("done"):
+                # A fixed task that was missed remains priority until explicitly completed.
+                due_fixed = t["id"]
+                blocked_by_fixed = t
+                break
+
+    # Only the current contiguous dynamic window can be allocated to an active task.
+    # Upcoming blocks still expose their full dynamic pool as a planning preview.
+    A = dynamic_capacity(block, now_min)
 
     needs = {t["id"]: task_need(t, pool, now_dt) for t in tasks}
     carry_tasks = [t for t in tasks if t["type"] == "carry" and needs[t["id"]] > 0]
@@ -158,9 +215,6 @@ def compute_block(block, now_min, now_dt, settings, all_blocks):
     alloc = {}
     prot_targets = {t["id"]: floor_left(t) for t in share_tasks if t["id"] in protected}
     prot_total = sum(prot_targets.values())
-    # A protection decision never silently opts into a reduced floor. When the current block
-    # cannot physically fit the requested floor, allocate what physically fits and keep the
-    # shortage explicit so the UI can surface it instead of silently treating it as satisfied.
     prot_factor = min(1.0, A_share / prot_total) if prot_total > 0 else 1.0
     for tid, target in prot_targets.items():
         alloc[tid] = target * prot_factor
@@ -174,7 +228,7 @@ def compute_block(block, now_min, now_dt, settings, all_blocks):
     for t in carry_tasks:
         alloc[t["id"]] = needs[t["id"]] * carry_factor
 
-    if status == "active" and not block.get("delay_acknowledged"):
+    if status == "active" and not block.get("delay_acknowledged") and not blocked_by_fixed:
         started = any(t.get("spent_min", 0) > 0 or t.get("active_since") or t.get("done") for t in tasks)
         delay = now_min - start
         if not started and delay > threshold and any(v > 0 for v in needs.values()):
@@ -187,20 +241,26 @@ def compute_block(block, now_min, now_dt, settings, all_blocks):
                 pending.append({"kind": "overrun", "block_id": block["id"], "task_id": t["id"],
                                 "title": t["title"], "over_min": round(over)})
 
-    due_fixed = None
-    for t in tasks:
-        if t["type"] == "fixed" and not t.get("done") and t.get("fixed_start"):
-            fs = t2m(t["fixed_start"])
-            if fs <= now_min < fs + t.get("fixed_duration_min", 0):
-                due_fixed = t["id"]
-                break
-
     out_tasks = []
     for t in tasks:
         eff = eff_spent(t, now_dt)
         total_plan = task_total_plan(t, pool)
         a = alloc.get(t["id"], 0)
         ot = dict(t)
+
+        if t.get("type") == "fixed" and t.get("fixed_start") and status == "active":
+            fs = t2m(t["fixed_start"])
+            fe = fs + int(t.get("fixed_duration_min", 0))
+            if fs <= now_min < fe:
+                a = max(0.0, fe - now_min)
+                total_plan = float(t.get("fixed_duration_min", 0))
+
+        # A running dynamic task may only run until the next fixed boundary.
+        if t.get("active_since") and t["type"] in ("recurring", "carry"):
+            boundary = next((fs for fs, _fe, ft in intervals if fs > now_min and ft["id"] != t["id"]), None)
+            if boundary is not None:
+                a = min(a, max(0.0, boundary - now_min))
+
         ot.update({
             "planned_min": round(task_planned(t, pool), 1),
             "total_plan_min": round(total_plan, 1),
@@ -218,6 +278,7 @@ def compute_block(block, now_min, now_dt, settings, all_blocks):
     return {
         **{k: v for k, v in block.items() if k != "tasks"},
         "status": status, "remaining_min": round(remaining, 1), "pool_min": pool,
+        "dynamic_available_min": round(A, 1),
         "duration_min": end - start, "free_min": round(A - sum(alloc.values()), 1),
         "tasks": out_tasks, "pending_decisions": pending, "due_fixed_task_id": due_fixed,
     }
